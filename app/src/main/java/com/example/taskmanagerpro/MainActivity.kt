@@ -12,7 +12,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -26,7 +25,6 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Inicializa o sistema de navegação do App
                     NavegacaoApp()
                 }
             }
@@ -34,11 +32,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- BANCO DE DADOS EM MEMÓRIA (List/Coleção) ---
-val listaDeTarefas = listOf(
-    Tarefa(1, "Estudar Lambdas e Altas Ordem", "Praticar a passagem de funções como parâmetros.", Prioridade.ALTA),
-    Tarefa(2, "Criar Coleções em Kotlin", "Entender a diferença entre List, Set e Map.", Prioridade.MEDIA),
-    Tarefa(3, "Revisar Data Classes", "Aprender a usar copy(), toString() e desestruturação.", Prioridade.BAIXA)
+// --- BANCO DE DADOS EM MEMÓRIA ---
+val listaDeTarefas = mutableStateListOf(
+    Tarefa(1, "Estudar Null Safety e Exceções", "Praticar try/catch, Elvis e Safe Calls.", Prioridade.ALTA),
+    Tarefa(2, "Tratar erros na busca", null, Prioridade.MEDIA), // Exemplo de descrição null
+    Tarefa(3, "Revisar Stack Unwinding", "Entender como erros sobem na pilha.", Prioridade.BAIXA)
 )
 
 // --- SISTEMA DE NAVEGAÇÃO ---
@@ -46,74 +44,112 @@ val listaDeTarefas = listOf(
 fun NavegacaoApp() {
     val navController = rememberNavController()
 
-    // NavHost gerencia as telas e rotas de navegação
     NavHost(navController = navController, startDestination = "tela_lista") {
-
-        // Rota da Tela 1: Lista
         composable("tela_lista") {
             TelaLista(
-                // Passando uma Lambda como Callback de clique (Função de Alta Ordem)
                 onTarefaSelecionada = { idTarefa ->
                     navController.navigate("tela_detalhes/$idTarefa")
                 }
             )
         }
 
-        // Rota da Tela 2: Detalhes da Tarefa (Recebe ID por parâmetro)
         composable("tela_detalhes/{tarefaId}") { backStackEntry ->
-            val idString = backStackEntry.arguments?.getString("tarefaId")
-            val id = idString?.toIntOrNull() ?: 0
+            val idParametro = backStackEntry.arguments?.getString("tarefaId")
+
+            // USO DO 'try / catch' COMO EXPRESSÃO + Safe Cast (as?)
+            val idValido: Int? = try {
+                idParametro?.toInt()
+            } catch (e: NumberFormatException) {
+                null
+            }
 
             TelaDetalhes(
-                tarefaId = id,
+                tarefaId = idValido,
                 onVoltar = { navController.popBackStack() }
             )
         }
     }
 }
 
-// TELA 1: LISTA DE TAREFAS
+// --- TELA 1: LISTA DE TAREFAS + CRIAÇÃO COM VALIDAÇÃO ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TelaLista(onTarefaSelecionada: (Int) -> Unit) { // Função de Alta Ordem: recebe uma lambda (Int) -> Unit
-    val (filtroApenasAlta, setFiltroApenasAlta) = remember { mutableStateOf(false) }
+fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
+    val filtroApenasAlta = remember { mutableStateOf(false) }
 
-    // Aplicação das Funções Funcionais (filter)
-    val tarefasExibidas = if (filtroApenasAlta) {
+    // Estados para formulário de nova tarefa
+    var novoTitulo by remember { mutableStateOf("") }
+    var mensagemErroFormulario by remember { mutableStateOf<String?>(null) }
+
+    val tarefasExibidas = if (filtroApenasAlta.value) {
         listaDeTarefas.filter { it.prioridade == Prioridade.ALTA }
     } else {
         listaDeTarefas
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("TaskMaster - Minhas Tarefas") }) }
+        topBar = { TopAppBar(title = { Text("TaskMaster - Tarefas") }) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // Controles de Filtro
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // FORMULÁRIO COM TRATAMENTO DE EXCEÇÃO (try / catch)
+            Text("Adicionar Nova Tarefa", style = MaterialTheme.typography.titleMedium)
+
+            OutlinedTextField(
+                value = novoTitulo,
+                onValueChange = { novoTitulo = it },
+                label = { Text("Título da tarefa") },
                 modifier = Modifier.fillMaxWidth()
+            )
+
+            // OPERADOR ELVIS (?:) E SAFE CALL (?.) PARA EXIBIR MENSAGEM DE ERRO
+            mensagemErroFormulario?.let { erro ->
+                Text(text = erro, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Button(
+                onClick = {
+                    // TRY / CATCH CAPTURANDO A EXCEÇÃO LANÇADA PELO REQUIRE DA DATA CLASS
+                    try {
+                        val nova = Tarefa(
+                            id = listaDeTarefas.size + 1,
+                            titulo = novoTitulo,
+                            descricao = "Criada manualmente no app",
+                            prioridade = Prioridade.MEDIA
+                        )
+                        listaDeTarefas.add(nova)
+                        novoTitulo = ""
+                        mensagemErroFormulario = null // Limpa o erro se deu certo
+                    } catch (e: IllegalArgumentException) {
+                        // Captura e armazena a mensagem da exceção
+                        mensagemErroFormulario = e.message ?: "Erro desconhecido ao criar tarefa."
+                    }
+                },
+                modifier = Modifier.padding(vertical = 8.dp)
             ) {
+                Text("Adicionar")
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // FILTRO DE PRIORIDADE
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
-                    checked = filtroApenasAlta,
-                    onCheckedChange = { setFiltroApenasAlta(it)}
+                    checked = filtroApenasAlta.value,
+                    onCheckedChange = { filtroApenasAlta.value = it }
                 )
                 Text("Exibir apenas prioridade ALTA")
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Coleção renderizada em lista rolável
+            // LISTA
             LazyColumn {
                 items(tarefasExibidas) { tarefa ->
-                    ItemTarefa(
-                        tarefa = tarefa,
-                        onClick = { onTarefaSelecionada(tarefa.id) } // Execução do Callback Lambda
-                    )
+                    ItemTarefa(tarefa = tarefa, onClick = { onTarefaSelecionada(tarefa.id) })
                 }
             }
         }
@@ -131,23 +167,30 @@ fun ItemTarefa(tarefa: Tarefa, onClick: () -> Unit) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = tarefa.titulo, style = MaterialTheme.typography.titleMedium)
-            Text(text = "Prioridade: ${tarefa.prioridade.rotulo}", style = MaterialTheme.typography.bodySmall)
+
+            // SAFE CALL (?.) + OPERADOR ELVIS (?:)
+            // Se a descrição for null, usa a String padrão "Sem descrição cadastrada"
+            val descricaoTexto = tarefa.descricao ?: "Sem descrição cadastrada."
+            Text(text = descricaoTexto, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
-//  TELA 2: DETALHES DA TAREFA
+// --- TELA 2: DETALHES DA TAREFA ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TelaDetalhes(tarefaId: Int, onVoltar: () -> Unit) {
-    // Busca na coleção
-    val tarefa = listaDeTarefas.find { it.id == tarefaId }
+fun TelaDetalhes(tarefaId: Int?, onVoltar: () -> Unit) {
 
-    // Uso de Sealed Class para controlar a exibição do estado
-    val estadoTela: EstadoTela = if (tarefa != null) {
-        EstadoTela.Sucesso(listOf(tarefa))
+    // TRATAMENTO COM NULL SAFETY: Busca a tarefa apenas se o ID não for null
+    val tarefaEncontrada = tarefaId?.let { id ->
+        listaDeTarefas.find { it.id == id }
+    }
+
+    // AVALIAÇÃO DO ESTADO DA TELA (Sealed Class)
+    val estadoTela: EstadoTela = if (tarefaEncontrada != null) {
+        EstadoTela.Sucesso(listOf(tarefaEncontrada))
     } else {
-        EstadoTela.Erro("Tarefa não encontrada!")
+        EstadoTela.Erro("Erro: Tarefa não encontrada ou ID inválido!")
     }
 
     Scaffold(
@@ -159,28 +202,31 @@ fun TelaDetalhes(tarefaId: Int, onVoltar: () -> Unit) {
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            // Tratamento das variantes do Sealed Class
             when (estadoTela) {
                 is EstadoTela.Carregando -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is EstadoTela.Sucesso -> {
-                    val t = estadoTela.tarefas.first()
-
-                    // Exemplo de Desestruturação da Data Class
-                    val (id, titulo, descricao, prioridade) = t
+                    val tarefa = estadoTela.tarefas.first()
 
                     Column {
-                        Text(text = titulo, style = MaterialTheme.typography.headlineMedium)
+                        Text(text = tarefa.titulo, style = MaterialTheme.typography.headlineMedium)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "Prioridade: ${prioridade.rotulo}", style = MaterialTheme.typography.labelLarge)
+                        Text(text = "Prioridade: ${tarefa.prioridade.rotulo}", style = MaterialTheme.typography.labelLarge)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = descricao, style = MaterialTheme.typography.bodyLarge)
+
+                        // SAFE CALL + LET COM VALOR DEFAULT USANDO ELVIS
+                        // Exibe a descrição com formatação extra SOMENTE se ela existir
+                        tarefa.descricao?.let { desc ->
+                            Text(text = "Descrição:", style = MaterialTheme.typography.titleSmall)
+                            Text(text = desc, style = MaterialTheme.typography.bodyLarge)
+                        } ?: Text(
+                            text = "Nenhuma descrição detalhada foi fornecida para esta tarefa.",
+                            color = MaterialTheme.colorScheme.outline
+                        )
 
                         Spacer(modifier = Modifier.height(32.dp))
-                        Button(onClick = onVoltar) {
-                            Text("Voltar para Lista")
-                        }
+                        Button(onClick = onVoltar) { Text("Voltar para Lista") }
                     }
                 }
                 is EstadoTela.Erro -> {
