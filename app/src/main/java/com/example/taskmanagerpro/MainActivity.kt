@@ -1,6 +1,7 @@
 package com.example.taskmanagerpro
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -32,14 +33,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- BANCO DE DADOS EM MEMÓRIA ---
 val listaDeTarefas = mutableStateListOf(
-    Tarefa(1, "Estudar Null Safety e Exceções", "Praticar try/catch, Elvis e Safe Calls.", Prioridade.ALTA),
-    Tarefa(2, "Tratar erros na busca", null, Prioridade.MEDIA), // Exemplo de descrição null
-    Tarefa(3, "Revisar Stack Unwinding", "Entender como erros sobem na pilha.", Prioridade.BAIXA)
+    Tarefa(1, "Estudar Genéricos e out/in", "Praticar Type Safety e Containers Genéricos.", Prioridade.ALTA),
+    Tarefa(2, "Criar Anotações Personalizadas", "Entender @Target e @Retention.", Prioridade.MEDIA),
+    Tarefa(3, "Substituir Any por <T>", "Evitar casts em tempo de execução.", Prioridade.BAIXA)
 )
 
-// --- SISTEMA DE NAVEGAÇÃO ---
+fun RegistrarAuditoria(funcaoReferencia: Function<*>){
+    val anotacao = funcaoReferencia::class.annotations.filterIsInstance<Auditavel>().firstOrNull()
+
+    anotacao?.let{
+        Log.i("AUDITORIA_APP", "Ação auditada execultada: ${it.acao}")
+    }
+}
+
 @Composable
 fun NavegacaoApp() {
     val navController = rememberNavController()
@@ -71,13 +78,11 @@ fun NavegacaoApp() {
     }
 }
 
-// --- TELA 1: LISTA DE TAREFAS + CRIAÇÃO COM VALIDAÇÃO ---
+// --- TELA 1: LISTA DE TAREFA ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
     val filtroApenasAlta = remember { mutableStateOf(false) }
-
-    // Estados para formulário de nova tarefa
     var novoTitulo by remember { mutableStateOf("") }
     var mensagemErroFormulario by remember { mutableStateOf<String?>(null) }
 
@@ -95,7 +100,6 @@ fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // FORMULÁRIO COM TRATAMENTO DE EXCEÇÃO (try / catch)
             Text("Adicionar Nova Tarefa", style = MaterialTheme.typography.titleMedium)
 
             OutlinedTextField(
@@ -105,26 +109,17 @@ fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // OPERADOR ELVIS (?:) E SAFE CALL (?.) PARA EXIBIR MENSAGEM DE ERRO
             mensagemErroFormulario?.let { erro ->
                 Text(text = erro, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
 
             Button(
                 onClick = {
-                    // TRY / CATCH CAPTURANDO A EXCEÇÃO LANÇADA PELO REQUIRE DA DATA CLASS
                     try {
-                        val nova = Tarefa(
-                            id = listaDeTarefas.size + 1,
-                            titulo = novoTitulo,
-                            descricao = "Criada manualmente no app",
-                            prioridade = Prioridade.MEDIA
-                        )
-                        listaDeTarefas.add(nova)
+                        adicionarNovaTarefa(novoTitulo)
                         novoTitulo = ""
-                        mensagemErroFormulario = null // Limpa o erro se deu certo
+                        mensagemErroFormulario = null
                     } catch (e: IllegalArgumentException) {
-                        // Captura e armazena a mensagem da exceção
                         mensagemErroFormulario = e.message ?: "Erro desconhecido ao criar tarefa."
                     }
                 },
@@ -135,7 +130,7 @@ fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))
 
-            // FILTRO DE PRIORIDADE
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = filtroApenasAlta.value,
@@ -146,7 +141,6 @@ fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // LISTA
             LazyColumn {
                 items(tarefasExibidas) { tarefa ->
                     ItemTarefa(tarefa = tarefa, onClick = { onTarefaSelecionada(tarefa.id) })
@@ -154,6 +148,17 @@ fun TelaLista(onTarefaSelecionada: (Int) -> Unit) {
             }
         }
     }
+}
+
+@Auditavel(acao = "Cadastro_De_Tarefa")
+fun adicionarNovaTarefa(titulo: String){
+    val nova = Tarefa(
+        id = listaDeTarefas.size + 1,
+        titulo = titulo,
+        descricao = "Criada manualmente no app",
+        prioridade = Prioridade.BAIXA
+    )
+    listaDeTarefas.add(nova)
 }
 
 @Composable
@@ -168,8 +173,7 @@ fun ItemTarefa(tarefa: Tarefa, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = tarefa.titulo, style = MaterialTheme.typography.titleMedium)
 
-            // SAFE CALL (?.) + OPERADOR ELVIS (?:)
-            // Se a descrição for null, usa a String padrão "Sem descrição cadastrada"
+
             val descricaoTexto = tarefa.descricao ?: "Sem descrição cadastrada."
             Text(text = descricaoTexto, style = MaterialTheme.typography.bodySmall)
         }
@@ -181,16 +185,12 @@ fun ItemTarefa(tarefa: Tarefa, onClick: () -> Unit) {
 @Composable
 fun TelaDetalhes(tarefaId: Int?, onVoltar: () -> Unit) {
 
-    // TRATAMENTO COM NULL SAFETY: Busca a tarefa apenas se o ID não for null
-    val tarefaEncontrada = tarefaId?.let { id ->
-        listaDeTarefas.find { it.id == id }
-    }
+    val tarefaEncontrada = tarefaId?.let { id -> listaDeTarefas.find { it.id == id } }
 
-    // AVALIAÇÃO DO ESTADO DA TELA (Sealed Class)
-    val estadoTela: EstadoTela = if (tarefaEncontrada != null) {
-        EstadoTela.Sucesso(listOf(tarefaEncontrada))
-    } else {
-        EstadoTela.Erro("Erro: Tarefa não encontrada ou ID inválido!")
+    val estadoTela: Resultado<Tarefa> = if (tarefaEncontrada != null){
+        Resultado.Sucesso(dados = tarefaEncontrada)
+    }else{
+        Resultado.Erro("A tarefa solicitada não foi encontrada no repositorio")
     }
 
     Scaffold(
@@ -203,11 +203,11 @@ fun TelaDetalhes(tarefaId: Int?, onVoltar: () -> Unit) {
                 .padding(16.dp)
         ) {
             when (estadoTela) {
-                is EstadoTela.Carregando -> {
+                is Resultado.Carregado -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
-                is EstadoTela.Sucesso -> {
-                    val tarefa = estadoTela.tarefas.first()
+                is Resultado.Sucesso -> {
+                    val tarefa = estadoTela.dados
 
                     Column {
                         Text(text = tarefa.titulo, style = MaterialTheme.typography.headlineMedium)
@@ -215,8 +215,7 @@ fun TelaDetalhes(tarefaId: Int?, onVoltar: () -> Unit) {
                         Text(text = "Prioridade: ${tarefa.prioridade.rotulo}", style = MaterialTheme.typography.labelLarge)
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // SAFE CALL + LET COM VALOR DEFAULT USANDO ELVIS
-                        // Exibe a descrição com formatação extra SOMENTE se ela existir
+
                         tarefa.descricao?.let { desc ->
                             Text(text = "Descrição:", style = MaterialTheme.typography.titleSmall)
                             Text(text = desc, style = MaterialTheme.typography.bodyLarge)
@@ -229,7 +228,7 @@ fun TelaDetalhes(tarefaId: Int?, onVoltar: () -> Unit) {
                         Button(onClick = onVoltar) { Text("Voltar para Lista") }
                     }
                 }
-                is EstadoTela.Erro -> {
+                is Resultado.Erro -> {
                     Column(modifier = Modifier.align(Alignment.Center)) {
                         Text(text = estadoTela.mensagem, color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(16.dp))
