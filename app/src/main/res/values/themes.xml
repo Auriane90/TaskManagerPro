@@ -1,5 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.TaskManagerPro" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Alterar o parent para um tema AppCompat ou MaterialComponents -->
+    <style name="Theme.TaskManagerPro" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Cores do tema -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+    </style>
 </resources>
